@@ -1,0 +1,13 @@
+
+#include <tunables/global>
+
+profile flask-apparmor flags=(attach_disconnected) {
+  #include <abstractions/base>
+
+  file,
+
+  deny /etc/** r,
+  deny /var/** w,
+  deny /bin/** x,
+  deny /usr/bin/** x,
+}
