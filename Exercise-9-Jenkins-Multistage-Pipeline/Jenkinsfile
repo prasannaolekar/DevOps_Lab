@@ -1,0 +1,101 @@
+
+pipeline {
+    agent any
+
+    environment {
+        PROJECT_DIR = 'Exercise-9-Jenkins-Multistage-Pipeline'
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                dir("${PROJECT_DIR}") {
+                    echo 'Installing Flask dependencies...'
+                    sh '''
+                        python3 -m venv .venv
+                        .venv/bin/python -m pip install --upgrade pip
+                        .venv/bin/pip install -r python-flask-app/requirements.txt
+                    '''
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                dir("${PROJECT_DIR}") {
+                    echo 'Running unit tests...'
+                    sh '''
+                        .venv/bin/python -m unittest discover \
+                            -s python-flask-app -p "test_*.py"
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                dir("${PROJECT_DIR}") {
+                    echo 'Deploying Flask application...'
+                    sh '''
+                        mkdir -p "$WORKSPACE/$PROJECT_DIR/python-app-deploy"
+                        cp python-flask-app/app.py \
+                            "$WORKSPACE/$PROJECT_DIR/python-app-deploy/"
+                        cp python-flask-app/requirements.txt \
+                            "$WORKSPACE/$PROJECT_DIR/python-app-deploy/"
+                    '''
+                }
+            }
+        }
+
+        stage('Run Application') {
+            steps {
+                dir("${PROJECT_DIR}") {
+                    echo 'Starting Flask application...'
+                    sh '''
+                        cd "$WORKSPACE/$PROJECT_DIR/python-app-deploy"
+                        nohup "$WORKSPACE/$PROJECT_DIR/.venv/bin/python" \
+                            app.py > app.log 2>&1 &
+                        echo $! > app.pid
+                    '''
+                }
+            }
+        }
+
+        stage('Test Application') {
+            steps {
+                dir("${PROJECT_DIR}") {
+                    echo 'Testing the deployed application...'
+                    sh '''
+                        .venv/bin/python -c "
+import time
+import urllib.request
+
+url = 'http://127.0.0.1:5000/'
+for attempt in range(15):
+    try:
+        with urllib.request.urlopen(url, timeout=2) as response:
+            body = response.read().decode()
+            print(body)
+            assert response.status == 200
+            assert body == 'Hello, Jenkins Multi-Stage Pipeline!'
+            break
+    except Exception:
+        if attempt == 14:
+            raise
+        time.sleep(1)
+"
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check the logs for more details.'
+        }
+    }
+}
